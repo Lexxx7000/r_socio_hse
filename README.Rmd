@@ -1,0 +1,302 @@
+---
+title: "Описание результатов"
+author: "Alexey Klimov"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    keep_md: true
+  md_document:
+    variant: markdown_github
+    toc: true
+    keep_md: true
+always_allow_html: yes
+#knit: (function(inputFile, encoding) { input.dir <- normalizePath(dirname(inputFile)); rmarkdown::render(input = inputFile, encoding = encoding, output_file = paste0(input.dir,'/README.md')); rmarkdown::render(input = paste0(input.dir,'/README.md'), encoding = encoding, output_format="html_document", output_file = paste0(input.dir,'/README.html')) })
+---
+
+```{r setup, include=FALSE}
+options(scipen = 10, digits = 2, OutDec = '.')
+knitr::opts_chunk$set(
+  cache = TRUE
+  , echo = FALSE
+  , autodep = TRUE
+  , encoding = "UTF-8"
+  , dpi = 96
+  , global.par = TRUE
+  , par = TRUE
+  , crop = TRUE
+  , comment = NA
+  )
+
+library("tidyverse")
+library("reshape2")
+library("pander")
+library("sjPlot")
+library("lazyeval")
+library("glmnet")
+```
+
+```{r}
+data <- read.csv2("lenadata.csv")
+```
+
+Исходный код доступен в файле по ссылке: [README.Rmd](README.Rmd), скачать его можно с [репозитория на гитхабе](https://github.com/rhangelxs/r_socio_hse).
+
+```{r, include=FALSE}
+pander(data, style = "rmarkdown")
+
+# devtools::install_github("larmarange/labelled")
+# devtools::install_github("jjchern/meda")
+```
+
+
+```{r}
+#data <- data %>% mutate(roc = rocF1 + rocF2 + rocF2 + rocF4)
+#data <- data %>% mutate(sex = ifelse(sex == 1, "Men", "Women"))
+#data <- data %>% mutate(sex = as.factor(sex))
+```
+
+## Графики
+
+```{r, warning=FALSE}
+tryCatch({
+  suppressWarnings(library(plotly))
+  plot_ly(data, x = ~sex, y = ~roc, color = ~sex, type = "box")
+}
+, error = function(e) {message("График как в 2016 отсутсвует")}
+)
+```
+
+
+
+```{r}
+y <- "roc"
+cat <- "sex"
+
+df.summ <- data %>% group_by_(cat) %>% summarize_(
+  Mean = interp(~mean(y, na.rm = TRUE), y = as.name(y))
+  , SD = interp(~sd(y, na.rm = TRUE), y = as.name(y))
+  , Min = interp(~min(y, na.rm = TRUE), y = as.name(y))
+  , Max = interp(~max(y, na.rm = TRUE), y = as.name(y))
+  )
+
+p <- ggplot(df.summ, aes(x = sex, y = Mean, ymin = Mean-SD, ymax = Mean+SD, fill = sex)) + 
+  geom_bar(stat = "identity") + 
+  geom_errorbar() + 
+  ggtitle(paste0("Level of ", y ," by ", cat))
+p
+```
+
+
+
+## Линейное моделирование
+
+Сначала построим две модели:
+
+1. Модель для двух предикторов (lm0)
+2. Модель для двух предикторов с интеракцией между ними (lm1)
+
+```{r}
+lm0 <- lm(roc ~ Oidep + Oiorg, data = data)
+lm1 <- lm(roc ~ Oidep * Oiorg, data = data)
+```
+
+Показатели последней модели (lm1) с интеракцией:
+
+```{r}
+summary(lm1)
+```
+
+Из вывода линейной модели нужно привести:
+*$R^2$, $N$, $p-value$, F-статистику*
+
+Для каждого регрессора (предиктора):
+Как минимум $\beta-коэффициента$ и значимость + крайне желательно $t$-значние, либо $SE$
+
+### Сравнимаем полученные модели
+
+Сравним наши модели с помощью метода (stepwise regression^[почему этот старый и добрый метод не современный написано тут: https://stats.stackexchange.com/questions/13686/what-are-modern-easily-used-alternatives-to-stepwise-regression]) модель с интеракцией и модель без интеракции.
+
+Для этого нам поможет пакет `lmSupport`, но в целом можно ориентироваться на AIC и BIC. Но в нашем случае достаточно воспользоваться ANOVA (или diff-test).
+
+```{r}
+lm_comp <- lmSupport::modelCompare(lm0, lm1)
+```
+
+```{r, include=FALSE}
+if (lm_comp$p <= 0.05) {
+  result <- "улучшает"
+} else {
+    result <- "не улучшает"
+}
+```
+
+
+В результате добавление инетеракции (аддитивный эффект) улучшает предсказательные способности модели ($\Delta R^2$) на `r scales::percent(lm_comp$DeltaR2)`. Добавление интеракции значимо `r result` показатели соответсвия модели данным ($p=`r lm_comp$p`$)
+
+Нагляднее всего график:
+
+```{r}
+sjPlot::sjp.int(lm1
+                , show.ci = TRUE
+                , p.kr = TRUE
+)
+```
+
+```{r}
+my_happy_y <- diamonds$price
+X <- model.matrix(data = diamonds, ~ carat * cut * clarity * x + y + z)
+model_lasso <- glmnet(X, my_happy_y)
+```
+
+## Регрессия с регуляризацией
+
+В некоторых случаях в ручную отбирать регрессоры неудобно. Для этого можно использовать PLS (аля SEM), Ridge или Lasso.
+
+Полезным будет техника разбиения выборки на обучающую и тестовую (80/20) из Machine Learning.
+
+Для простоты предположим, что у нас нет никаких априорных представлений о модели. Попробуем найти самую удачную модель из всего датасета (включая исключительно числовые или факторные переменные).
+
+В качестве интересующей нас (выходной) перменной мы зададим:
+
+```{r}
+(output <- 'roc')
+```
+
+Основаня проблема пакета `glmnet` в том, что ему на вход нужно подавать разреженные матрицы. Напишим для этого небольшую вспомогательную функцию (может даже не одну).
+
+```{r, include=FALSE}
+corr_dataframe <- function(dataframe) {
+melted <- reshape2::melt(dataframe %>% mutate(id = row.names(.)), id.vars = c('id')) %>% full_join(.,., by=c('id'), factorsAsStrings=F)
+melted <- melted %>% filter(variable.x != variable.y)
+melted <- melted %>% group_by(variable.x, variable.y)
+
+# https://stackoverflow.com/questions/25811756/summarizing-counts-of-a-factor-with-dplyr
+
+
+return_original_or_factor <- function(value) {
+  if (is.numeric(value) ) {
+    return(value)
+  } else {
+    return(as.factor(value))
+  }
+}
+
+return_original_or_factor(as.character(data$sex))
+summarized <- NA
+summarized <- melted %>% summarise(
+    cor = tryCatch(
+      {Hmisc::rcorr(return_original_or_factor(value.x), return_original_or_factor(value.y)
+                    , type = "spearman"
+                    )$r[1,2]}
+                   , error = function(e) {
+                     #print(e)
+                     return(NA)
+                     }
+                   )
+    )
+
+return(summarized)
+}
+
+```
+
+```{r}
+# Подготовим список предикторов
+#predictors <- c('Oidep', 'Oiorg', 'sex', 'age')
+predictors <- names(data %>% select_if(function(col) is.numeric(col) || is.factor(col)) %>% select(-one_of(output)))
+#library(data.table)
+#dataset <- setDF(data)
+dataset <- data
+#dataset %>% mutate_if(is.factor, as.character) -> dataset
+
+data_for_glmnet <- dataset %>%
+  select_(.dots = c(predictors, output)) %>%
+  na.omit(.)
+```
+
+```{r}
+# Посчитаем парные корреляции
+
+summarized_corr_dataframe <- corr_dataframe(data_for_glmnet)
+summarized_corr_dataframe <- summarized_corr_dataframe %>% filter(variable.x != variable.y)
+summarized_corr_dataframe <- summarized_corr_dataframe %>% ungroup
+```
+
+
+В качестве предикторов числовых и категориальных предикторов у нас было `r length(predictors)` предиктор(а/ов): `r pander::pander(predictors)`.
+
+1. Сразу следует удалить предикторы, предсказательная сила которых слишком высокая (например, в этот список могут попасть компоненты выходной переменной). Мы же не хотим проверять очевидные вещи :)
+```{r, include=FALSE}
+removed_predictors <- summarized_corr_dataframe %>% filter(variable.x == output) %>% filter(abs(cor) > 0.5) %>% ungroup %>% select(variable.y) %>% c
+```
+
+2. Затем следует вручную удалить предикторы, которые попали по ошибке (например, в этот список могут попасть компоненты выходной переменной). Внимательно посмотрим на вывод этой команды:
+```{r}
+summarized_corr_dataframe %>% filter(variable.x == output) %>% arrange(desc(abs(cor))) %>% head(5) %>% select(-variable.x) %>% pander()
+```
+
+
+3. Чтобы не столкнуться с проблемами мулитиколлинеарности или некорректного кодирования переменных, посмотрим на все предикторы, коэффциент корреляций которых между собой больше 0.9:
+```{r, include=FALSE}
+highlycorrelated <- summarized_corr_dataframe %>% filter(abs(cor) > 0.9) %>% select(variable.x) %>% c
+```
+`r pander(highlycorrelated)`.
+
+```{r, include=FALSE}
+final_predictors <- setdiff(predictors, highlycorrelated)
+final_predictors <- setdiff(final_predictors, removed_predictors)
+```
+
+В *итоговый список* предикторов для LASSO регрессии у нас попали `r length(final_predictors)` переменных: `r pander(final_predictors)`
+
+По умолчанию `glmnet` строит LASSO модель (`alpha` = 1), если нужна Ridged регрессию, то нужно указать параметр `alpha` = 0.
+
+```{r}
+data_for_glmnet <- data_for_glmnet %>% select_(.dots = c(final_predictors, output))
+
+x_glmnet = data_for_glmnet %>% select_(.dots = predictors) %>% data.matrix %>% Matrix(., sparse = TRUE)
+y_glmnet = data_for_glmnet %>% select_(.dots = output) %>% data.matrix %>% Matrix(., sparse = TRUE)
+
+cvfit <- cv.glmnet(
+  x = x_glmnet
+  , y = y_glmnet
+  , nlambda = 10000
+)
+```
+
+Выбираем лучшую лямбду
+
+```{r}
+pander(broom::glance(cvfit))
+(best.lambda <- cvfit$lambda.1se)
+```
+
+
+```{r}
+glmfit <- glmnet(
+  x = x_glmnet
+  , y = y_glmnet
+  , lambda = best.lambda
+)
+```
+
+## График
+
+```{r}
+suppressWarnings(plot(cvfit, xvar="lambda.1se"))
+```
+
+## Коэффициенты модели (только те, которые не равны нулю)
+
+```{r}
+broom::tidy(glmfit) %>% pander
+```
+
+```{r}
+
+```
+
