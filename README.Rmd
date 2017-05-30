@@ -64,7 +64,7 @@ tryCatch({
   suppressWarnings(library(plotly))
   plot_ly(data, x = ~sex, y = ~roc, color = ~sex, type = "box")
 }
-, error = function(e) {message("График как в 2016 отсутсвует")}
+, error = function(e) {print(e); message("График как в 2016 отсутсвует")}
 )
 ```
 
