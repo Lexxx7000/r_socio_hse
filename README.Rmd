@@ -4,13 +4,13 @@ author: "Alexey Klimov"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
-    toc: true
+    self_contained: no
+    toc: yes
     toc_float:
-      collapsed: false
-      smooth_scroll: false
-    self_contained: false
+      collapsed: no
+      smooth_scroll: no
   github_document:
-    toc: true
+    toc: yes
 always_allow_html: yes
 #knit: (function(inputFile, encoding) { input.dir <- normalizePath(dirname(inputFile)); rmarkdown::render(input = inputFile, encoding = encoding, output_file = paste0(input.dir,'/README.md')); rmarkdown::render(input = paste0(input.dir,'/README.md'), encoding = encoding, output_format="html_document", output_file = paste0(input.dir,'/README.html')) })
 ---
@@ -59,10 +59,14 @@ pander(data, style = "rmarkdown")
 
 ## Графики
 
-```{r, warning=FALSE, plotly=TRUE}
+```{r, warning=FALSE}
 tryCatch({
   suppressWarnings(library(plotly))
   plot_ly(data, x = ~sex, y = ~roc, color = ~sex, type = "box")
+  #p <- ggplotly(ggplot2::ggplot(data = data) + geom_boxplot(aes(x = sex, y = roc, color = sex)))
+  #htmlwidgets::saveWidget(p, file='./test.html')
+  #plotly::export(p)
+
 }
 , error = function(e) {print(e); message("График как в 2016 отсутсвует")}
 )
