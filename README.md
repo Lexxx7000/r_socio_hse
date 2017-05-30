@@ -10,7 +10,9 @@ Alexey Klimov
 -   График
 -   [Коэффициенты модели (только те, которые не равны нулю)](#-------)
 
-Исходный код доступен в файле по ссылке: [README.Rmd](README.Rmd), скачать его можно с [репозитория на гитхабе](https://github.com/rhangelxs/r_socio_hse).
+Посмотреть собранный html файл можно здесь: <https://rhangelxs.github.io/r_socio_hse/README.html>
+
+Исходный код доступен в формате Rmd в [моем репозитории на гитхабе](https://github.com/rhangelxs/r_socio_hse), скачать исходный файл можно по ссылке: [README.Rmd](https://rhangelxs.github.io/r_socio_hse/README.Rmd).
 
 Графики
 -------
