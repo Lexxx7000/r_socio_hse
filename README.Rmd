@@ -59,7 +59,7 @@ pander(data, style = "rmarkdown")
 
 ## Графики
 
-```{r, warning=FALSE}
+```{r, warning=FALSE, plotly=TRUE}
 tryCatch({
   suppressWarnings(library(plotly))
   plot_ly(data, x = ~sex, y = ~roc, color = ~sex, type = "box")
