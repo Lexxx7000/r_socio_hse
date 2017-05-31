@@ -201,6 +201,15 @@ summarized <- melted %>% summarise(
                      return(NA)
                      }
                    )
+    , pvalue = tryCatch(
+      {Hmisc::rcorr(return_original_or_factor(value.x), return_original_or_factor(value.y)
+                    , type = "spearman"
+                    )$P[1,2]}
+                   , error = function(e) {
+                     #print(e)
+                     return(NA)
+                     }
+                   )
     )
 
 return(summarized)
